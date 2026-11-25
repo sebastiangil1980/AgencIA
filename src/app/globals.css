@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { background: #EBEAEE; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #111;
+}
+
+.pill {
+  @apply flex w-full items-center justify-center gap-3 rounded-full px-6 py-4 text-[20px] font-medium shadow-pill transition active:scale-[0.98] disabled:opacity-50 sm:text-[22px];
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.pulse-ring { animation: pulse-ring 1.2s ease-out infinite; }
