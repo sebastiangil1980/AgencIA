@@ -5,6 +5,25 @@ import type { Level, Scenario } from "@/lib/tutor";
 type Feedback = { ok: boolean; corrected: string; explanation: string; score: number } | null;
 type Turn = { role: "user" | "assistant"; content: string; feedback?: Feedback };
 
+// Un único reproductor que se "desbloquea" con un toque del usuario (requisito de iPhone/Safari)
+let player: HTMLAudioElement | null = null;
+const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+
+function unlockAudio() {
+  if (typeof window === "undefined") return;
+  if (!player) player = new Audio();
+  player.src = SILENCE;
+  player.play().catch(() => {});
+}
+
+function extensionFor(mime: string) {
+  if (mime.includes("mp4") || mime.includes("aac")) return "mp4";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("wav")) return "wav";
+  if (mime.includes("mpeg")) return "mp3";
+  return "webm";
+}
+
 async function speak(text: string) {
   try {
     const res = await fetch("/api/tts", {
@@ -14,9 +33,10 @@ async function speak(text: string) {
     });
     if (res.status === 200) {
       const url = URL.createObjectURL(await res.blob());
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      await audio.play();
+      if (!player) player = new Audio();
+      player.src = url;
+      player.onended = () => URL.revokeObjectURL(url);
+      await player.play();
       return;
     }
   } catch {
@@ -89,6 +109,7 @@ export default function Conversation({
   };
 
   const toggleMic = async () => {
+    unlockAudio();
     if (recording) {
       recorder.current?.stop();
       setRecording(false);
@@ -101,10 +122,15 @@ export default function Conversation({
       mr.ondataavailable = (e) => e.data.size && chunks.current.push(e.data);
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks.current, { type: mr.mimeType });
+        const mime = mr.mimeType || chunks.current[0]?.type || "audio/webm";
+        const blob = new Blob(chunks.current, { type: mime });
+        if (blob.size < 1000) {
+          setError("No se escuchó nada. Mantén el micrófono activo mientras hablas y vuelve a tocar para enviar.");
+          return;
+        }
         setBusy("listening");
         const form = new FormData();
-        form.append("audio", blob, "speech.webm");
+        form.append("audio", blob, `speech.${extensionFor(mime)}`);
         try {
           const res = await fetch("/api/transcribe", { method: "POST", body: form });
           const data = await res.json();
@@ -119,8 +145,15 @@ export default function Conversation({
       recorder.current = mr;
       mr.start();
       setRecording(true);
-    } catch {
-      setError("No se pudo acceder al micrófono.");
+    } catch (e) {
+      const name = (e as Error).name;
+      setError(
+        name === "NotAllowedError"
+          ? "El micrófono está bloqueado. En el iPhone: toca «aA» en la barra de Safari → Configuración del sitio web → Micrófono → Permitir, y recarga la página."
+          : !navigator.mediaDevices
+            ? "Este navegador no permite usar el micrófono aquí. Abre la página con https:// en Safari o Chrome."
+            : `No se pudo acceder al micrófono (${name}).`,
+      );
     }
   };
 
@@ -186,6 +219,7 @@ export default function Conversation({
           className="flex w-full gap-2"
           onSubmit={(e) => {
             e.preventDefault();
+            unlockAudio();
             send(text);
             setText("");
           }}

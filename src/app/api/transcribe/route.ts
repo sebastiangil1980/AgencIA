@@ -16,7 +16,9 @@ export async function POST(req: Request) {
   }
 
   const form = new FormData();
-  form.append("file", audio, "speech.webm");
+  // El nombre (extensión) le dice a OpenAI el formato: el iPhone graba en mp4, Chrome en webm
+  const filename = audio instanceof File && audio.name ? audio.name : "speech.webm";
+  form.append("file", audio, filename);
   form.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe");
   form.append("language", "en");
 
